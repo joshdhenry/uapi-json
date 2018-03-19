@@ -10,6 +10,19 @@ import {
   GdsRuntimeError,
 } from './AirErrors';
 
+const parseFareCalculation = (str) => {
+  const fareCalculation = str.match(/^([\s\S]+)END($|\s)/)[1];
+  const roe = str.match(/ROE((?:\d+\.)?\d+)/);
+  return Object.assign(
+    {
+      fareCalculation,
+    },
+    roe
+      ? { roe: roe[1] }
+      : null
+  );
+};
+
 const searchLowFaresValidate = (obj) => {
   // +List, e.g. AirPricePointList, see below
   const rootArrays = ['AirPricePoint', 'AirSegment', 'FareInfo', 'FlightDetails', 'Route'];
@@ -253,6 +266,8 @@ const AirErrorHandler = function (obj) {
   // FIXME collapse versions using a regexp search in ParserUapi
   if (errData) {
     switch (errData[`common_${this.uapi_version}:Code`]) {
+      case '345':
+        return Promise.reject(new AirRuntimeError.NoAgreement());
       case '4454':
         return Promise.reject(new AirRuntimeError.NoResidualValue(obj));
       case '12009':
@@ -423,9 +438,6 @@ const airGetTicket = function (obj) {
     || (fareInfo && fareInfo[`common_${this.uapi_version}:Commission`])
     || null;
 
-  const fareCalculation = etr['air:FareCalc'].match(/^([\s\S]+END)($|\s)/)[1];
-  const roe = etr['air:FareCalc'].match(/ROE((?:\d+\.)?\d+)/);
-
   const response = Object.assign(
     {
       uapi_ur_locator: obj.UniversalRecordLocatorCode,
@@ -437,7 +449,6 @@ const airGetTicket = function (obj) {
       issuedAt: etr.IssuedDate,
       farePricingMethod: airPricingInfo ? airPricingInfo.PricingMethod : null,
       farePricingType: airPricingInfo ? airPricingInfo.PricingType : null,
-      fareCalculation,
       priceInfoAvailable,
       priceInfoDetailsAvailable: (airPricingInfo !== null),
       taxes: priceSource.Taxes,
@@ -449,9 +460,7 @@ const airGetTicket = function (obj) {
       isConjunctionTicket: tickets.length > 1,
       tourCode,
     },
-    roe
-      ? { roe: roe[1] }
-      : null,
+    parseFareCalculation(etr['air:FareCalc']),
     commission
       ? {
         commission: {
@@ -752,15 +761,11 @@ function extractBookings(obj) {
             }
           );
 
-          const fareCalculation = pricingInfo['air:FareCalc'].match(/^([\s\S]+END)($|\s)/)[1];
-          const roe = pricingInfo['air:FareCalc'].match(/ROE((?:\d+\.)?\d+)/);
-
           return Object.assign(
             {
               uapi_pricing_info_ref: key,
               passengers: pricingInfoPassengers,
               uapi_pricing_info_group: pricingInfo.AirPricingInfoGroup,
-              fareCalculation,
               farePricingMethod: pricingInfo.PricingMethod,
               farePricingType: pricingInfo.PricingType,
               totalPrice: pricingInfo.TotalPrice,
@@ -772,9 +777,7 @@ function extractBookings(obj) {
               baggage,
               timeToReprice: pricingInfo.LatestTicketingTime,
             },
-            roe
-              ? { roe: roe[1] }
-              : null
+            parseFareCalculation(pricingInfo['air:FareCalc']),
           );
         }
       );
@@ -953,12 +956,14 @@ function exchangeQuote(req) {
               };
             });
 
-          return {
-            ...format.formatPrices(pricing),
-            bookingInfo,
-            uapi_pricing_info_ref: pricing.Key,
-            fareCalculation: pricing['air:FareCalc'],
-          };
+          return Object.assign(
+            {
+              ...format.formatPrices(pricing),
+              bookingInfo,
+              uapi_pricing_info_ref: pricing.Key,
+            },
+            parseFareCalculation(pricing['air:FareCalc']),
+          );
         });
 
       const airPricingDetails = solution['air:PricingDetails'];
@@ -994,6 +999,74 @@ function exchangeBooking(rsp) {
   throw new AirRuntimeError.CantDetectExchangeReponse(rsp);
 }
 
+function availability(rsp) {
+  const itinerarySolution = utils.firstInObj(rsp['air:AirItinerarySolution']);
+  const connectedSegments = itinerarySolution['air:Connection']
+    ? itinerarySolution['air:Connection'].map(
+      s => parseInt(s.SegmentIndex, 10)
+    )
+    : [];
+
+  const results = [];
+  let leg = [];
+  itinerarySolution['air:AirSegmentRef'].forEach((segmentRef, key) => {
+    const segment = rsp['air:AirSegmentList'][segmentRef];
+    const isConnected = connectedSegments.find(s => s === key);
+    const availInfo = segment['air:AirAvailInfo'].find(info => info.ProviderCode === '1G');
+
+    if (!availInfo) {
+      return;
+    }
+
+    if (!availInfo['air:BookingCodeInfo']) {
+      return;
+    }
+
+    const cabinsAvailability = availInfo['air:BookingCodeInfo']
+        .filter((info) => {
+          if (this.env.cabins && this.env.cabins.length > 0) {
+            return this.env.cabins.indexOf(info.CabinClass) !== -1;
+          }
+
+          return true;
+        })
+        .reduce((acc, x) => {
+          const codes = x.BookingCounts
+            .split('|')
+            .map(item => ({
+              bookingClass: item[0],
+              cabin: x.CabinClass,
+              seats: item[1].trim(),
+            }));
+
+          return acc.concat(codes);
+        }, []);
+
+    const s = {
+      ...format.formatSegment(segment),
+      plane: segment.Equipment,
+      duration: segment.FlightTime,
+      availability: cabinsAvailability,
+    };
+
+    leg.push(s);
+
+    if (!isConnected) {
+      results.push(leg);
+      leg = [];
+    }
+  });
+
+  if (leg.length !== 0) {
+    results.push(leg);
+  }
+
+  return {
+    legs: results,
+    nextResultReference: rsp[`common_${this.uapi_version}:NextResultReference`] || null,
+  };
+}
+
 module.exports = {
   AIR_LOW_FARE_SEARCH_REQUEST: lowFaresSearchRequest,
   AIR_PRICE_REQUEST_PRICING_SOLUTION_XML: airPriceRspPricingSolutionXML,
@@ -1011,4 +1084,5 @@ module.exports = {
   AIR_CANCEL_PNR: airCancelPnr,
   AIR_EXCHANGE_QUOTE: exchangeQuote,
   AIR_EXCHANGE: exchangeBooking,
+  AIR_AVAILABILITY: availability,
 };

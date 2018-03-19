@@ -16,7 +16,6 @@ const timestampRegexp = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}.\d{3}[-+]{1}\d{2}:
 const ticketRegExp = /^\d{13}$/;
 const pnrRegExp = /^[A-Z0-9]{6}$/i;
 const amountRegExp = /[A-Z]{3}(?:\d+\.)?\d+/i;
-const fareCalculationPattern = /.*END$/i;
 
 const checkLowSearchFareXml = (filename) => {
   const uParser = new ParserUapi('air:LowFareSearchRsp', 'v33_0', {});
@@ -58,7 +57,7 @@ const checkLowSearchFareXml = (filename) => {
                     expect(segment).to.be.an('object');
                     expect(segment).to.have.all.keys([
                       'from', 'to', 'departure', 'arrival', 'airline', 'flightNumber', 'serviceClass',
-                      'plane', 'duration', 'techStops', 'bookingClass', 'baggage', 'seatsAvailable',
+                      'plane', 'duration', 'techStops', 'bookingClass', 'baggage',
                       'fareBasisCode', 'group', 'uapi_segment_ref',
                     ]);
                     expect(segment.from).to.match(/^[A-Z]{3}$/);
@@ -72,7 +71,9 @@ const checkLowSearchFareXml = (filename) => {
                       'Economy', 'Business', 'First', 'PremiumEconomy',
                     ]);
                     expect(segment.bookingClass).to.match(/^[A-Z]{1}$/);
-                    expect(segment.seatsAvailable).to.be.a('number');
+                    if (segment.seatsAvailable) {
+                      expect(segment.seatsAvailable).to.be.a('number');
+                    }
                     // Planes
                     expect(segment.plane).to.be.an('array').and.to.have.length.above(0);
                     segment.plane.forEach(plane => expect(plane).to.be.a('string'));
@@ -217,7 +218,7 @@ describe('#AirParser', () => {
       expect(result.ticketingPcc).to.match(/^[A-Z0-9]{3,4}$/i);
       expect(result.isConjunctionTicket).to.be.a('boolean');
       expect(result.issuedAt).to.match(timestampRegexp);
-      expect(result.fareCalculation).to.match(fareCalculationPattern);
+      expect(result.fareCalculation).to.be.a('string').and.to.have.length.above(0);
       // Price info
       expect(result.priceInfoAvailable).to.be.a('boolean');
       expect(result.priceInfoDetailsAvailable).to.be.a('boolean');
@@ -519,7 +520,7 @@ describe('#AirParser', () => {
           expect(result.platingCarrier).to.match(/^[A-Z0-9]{2}$/i);
           expect(result.ticketingPcc).to.match(/^[A-Z0-9]{3,4}$/i);
           expect(result.issuedAt).to.match(timestampRegexp);
-          expect(result.fareCalculation).to.match(fareCalculationPattern);
+          expect(result.fareCalculation).to.be.a('string').and.to.have.length.above(0);
           // Price info
           expect(result.priceInfoDetailsAvailable).to.equal(false);
           expect(result.totalPrice).to.match(/[A-Z]{3}(?:\d+\.)?\d+/i);
@@ -878,8 +879,7 @@ describe('#AirParser', () => {
               }
             );
 
-            expect(pricingInfo.fareCalculation).to.be.a('string');
-            expect(pricingInfo.fareCalculation).to.match(fareCalculationPattern);
+            expect(pricingInfo.fareCalculation).to.be.a('string').and.to.have.length.above(0);
             expect(new Date(pricingInfo.timeToReprice)).to.be.an.instanceof(Date);
 
             expect(pricingInfo.passengersCount).to.be.an('object');
@@ -931,11 +931,11 @@ describe('#AirParser', () => {
           expect(segment.status).to.match(/^[A-Z]{2}$/);
           // Planes
           if (segment.plane) {
-            expect(segment.plane).to.be.an('array').and.to.have.length.above(0);
+            expect(segment.plane).to.be.an('array');
             segment.plane.forEach(plane => expect(plane).to.be.a('string'));
           }
           // Duration
-          expect(segment.duration).to.be.an('array').and.to.have.length.above(0);
+          expect(segment.duration).to.be.an('array');
           segment.duration.forEach(duration => expect(duration).to.match(/^\d+$/));
           // Tech stops
           expect(segment.techStops).to.be.an('array');
@@ -991,6 +991,25 @@ describe('#AirParser', () => {
   }
 
   describe('AIR_CREATE_RESERVATION()', () => {
+    it('should parse booking with no details on some segments', () => {
+      const uParser = new ParserUapi('universal:UniversalRecordImportRsp', 'v36_0', { });
+      const parseFunction = airParser.AIR_CREATE_RESERVATION_REQUEST;
+      const xml = fs.readFileSync(`${xmlFolder}/getPNR-no-details.xml`).toString();
+      return uParser.parse(xml)
+      .then(json => parseFunction.call(uParser, json))
+      .then((result) => {
+        testBooking(result);
+        const segments = result[0].segments;
+        expect(segments[0].plane).to.has.lengthOf(0);
+        expect(segments[0].duration).to.has.lengthOf(0);
+        expect(segments[1].plane).to.has.lengthOf(0);
+        expect(segments[1].duration).to.has.lengthOf(0);
+        expect(segments[2].plane).to.has.lengthOf(1);
+        expect(segments[2].duration).to.has.lengthOf(1);
+        expect(segments[3].plane).to.has.lengthOf(1);
+        expect(segments[3].duration).to.has.lengthOf(1);
+      });
+    });
     it('should parse booking with XF and ZP taxes in FQ', () => {
       const uParser = new ParserUapi('universal:UniversalRecordImportRsp', 'v36_0', { });
       const parseFunction = airParser.AIR_CREATE_RESERVATION_REQUEST;
@@ -1566,10 +1585,12 @@ describe('#AirParser', () => {
           'bookingInfo',
           'equivalentBasePrice',
           'fareCalculation',
+          'roe',
           'taxes',
           'totalPrice',
           'uapi_pricing_info_ref',
         ]);
+        expect(pricing.roe).to.match(/\d+\.\d+/);
         expect(pricing.bookingInfo).to.be.an('array').and.have.length.above(0);
         pricing.bookingInfo.forEach((info) => {
           expect(info).to.have.all.keys([
@@ -1673,6 +1694,117 @@ describe('#AirParser', () => {
       }).catch(e => {
         expect(e).to.be.instanceof(AirRuntimeError.CantDetectExchangeReponse);
       });
+    });
+  });
+
+  describe('AIR_AVAILABILITY', () => {
+    function testAvailability(rsp) {
+      expect(rsp).to.have.all.keys(['legs', 'nextResultReference']);
+      expect(rsp.legs).to.be.a('array');
+      rsp.legs.forEach(leg => {
+        expect(leg).to.be.a('array');
+        leg.forEach(segment => {
+          expect(segment).to.be.an('object');
+          expect(segment).to.have.all.keys([
+            'from', 'to', 'departure', 'arrival', 'airline',
+            'flightNumber', 'plane', 'duration',
+            'uapi_segment_ref', 'group', 'availability',
+          ]);
+          expect(segment.from).to.match(/^[A-Z]{3}$/);
+          expect(segment.to).to.match(/^[A-Z]{3}$/);
+          expect(new Date(segment.departure)).to.be.an.instanceof(Date);
+          expect(new Date(segment.arrival)).to.be.an.instanceof(Date);
+          expect(segment.airline).to.match(/^[A-Z0-9]{2}$/);
+          expect(segment.flightNumber).to.match(/^\d+$/);
+          if (segment.plane) {
+            expect(segment.plane).to.be.a('string').and.to.have.length.above(0);
+          }
+          expect(segment.duration).to.be.an('string').and.to.have.length.above(0);
+          expect(segment.uapi_segment_ref).to.be.a('string');
+
+          expect(segment.availability).to.be.a('array');
+          segment.availability.forEach(obj => {
+            expect(obj).to.have.all.keys(['bookingClass', 'cabin', 'seats']);
+            expect(obj.seats).to.be.a('string');
+          });
+        });
+      });
+
+      return true;
+    }
+    it('should parse simple response', () => {
+      const uParser = new ParserUapi('air:AvailabilitySearchRsp', 'v36_0', {
+        cabins: ['Economy'],
+      });
+
+      const parseFunction = airParser.AIR_AVAILABILITY;
+      const xml = fs.readFileSync(`${xmlFolder}/AirAvailabilityRsp.xml`).toString();
+      return uParser
+        .parse(xml)
+        .then((json) => parseFunction.call(uParser, json))
+        .then((result) => {
+          testAvailability(result);
+        });
+    });
+
+    it('should parse response with A and C availability', () => {
+      const uParser = new ParserUapi('air:AvailabilitySearchRsp', 'v36_0', {
+        cabins: ['Economy'],
+      });
+
+      const parseFunction = airParser.AIR_AVAILABILITY;
+      const xml = fs.readFileSync(`${xmlFolder}/AirAvailabilityRsp3.xml`).toString();
+      return uParser
+        .parse(xml)
+        .then((json) => parseFunction.call(uParser, json))
+        .then((result) => {
+          testAvailability(result);
+        });
+    });
+
+    it('should parse response without connections', () => {
+      const uParser = new ParserUapi('air:AvailabilitySearchRsp', 'v36_0', {});
+
+      const parseFunction = airParser.AIR_AVAILABILITY;
+      const xml = fs.readFileSync(`${xmlFolder}/AirAvailabilityRsp2.xml`).toString();
+      return uParser
+        .parse(xml)
+        .then((json) => parseFunction.call(uParser, json))
+        .then((result) => {
+          testAvailability(result);
+          expect(result.nextResultReference).to.be.null;
+        });
+    });
+
+    it('should parse response without 1G avail info', () => {
+      const uParser = new ParserUapi('air:AvailabilitySearchRsp', 'v36_0', {});
+
+      const parseFunction = airParser.AIR_AVAILABILITY;
+      const xml = fs.readFileSync(`${xmlFolder}/AirAvailabilityRsp4-NO1G.xml`).toString();
+      return uParser
+        .parse(xml)
+        .then((json) => parseFunction.call(uParser, json))
+        .then((result) => {
+          expect(result.legs.length).to.be.equal(0);
+        });
+    });
+  });
+
+  describe('AIR_ERROR', () => {
+    it('should correct handle error of agreement', () => {
+      const uParser = new ParserUapi('air:LowFareSearchRsp', 'v33_0', {});
+      const parseFunction = airParser.AIR_ERRORS;
+      const xml = fs.readFileSync(`${xmlFolder}/NoAgreementError.xml`).toString();
+      return uParser.parse(xml)
+        .then(
+          (json) => {
+            const errData = uParser.mergeLeafRecursive(json['SOAP:Fault'][0]); // parse error data
+            return parseFunction.call(uParser, errData);
+          }
+        )
+        .catch(
+          err => expect(err).to.be.an.instanceof(AirRuntimeError.NoAgreement)
+        );
     });
   });
 });
