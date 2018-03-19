@@ -118,7 +118,7 @@ function formatLowFaresSearch(searchRequest, searchResult) {
             );
             const seatsAvailable = (
               segment['air:AirAvailInfo'] &&
-              segment['air:AirAvailInfo'].ProviderCode === '1G'
+              segment['air:AirAvailInfo'].ProviderCode === '1P'
             ) ? (Number(
               segment['air:AirAvailInfo']['air:BookingCodeInfo'].BookingCounts
                 .match(new RegExp(`${segmentInfo.BookingCode}(\\d+)`))[1]

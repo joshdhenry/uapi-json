@@ -6,7 +6,7 @@ export default (params) => {
 
     const [m, y] = params.creditCard.expDate.split('/');
     params.creditCard.expDate = `${moment().format('YYYY').substring(0, 2)}${y}-${m}`;
-    // params.creditCard.type = 'CA'; // determine card type for 1G
+    // params.creditCard.type = 'CA'; // determine card type for 1P
   }
   return params;
 };

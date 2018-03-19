@@ -8,11 +8,11 @@ module.exports = `
   <soapenv:Body>
     <air:AirVoidDocumentReq
       AuthorizedBy="user" TargetBranch="{{TargetBranch}}" RetrieveProviderReservationDetails="false"
-      ShowETR="false" ProviderCode="1G" ProviderLocatorCode="{{pnr}}"
+      ShowETR="false" ProviderCode="1P" ProviderLocatorCode="{{pnr}}"
       >
       <com:BillingPointOfSaleInfo OriginApplication="uAPI"/>
       {{#if emulatePcc}}
-      <com:OverridePCC ProviderCode="1G" PseudoCityCode="{{emulatePcc}}"/>
+      <com:OverridePCC ProviderCode="1P" PseudoCityCode="{{emulatePcc}}"/>
       {{/if}}
       <air:VoidDocumentInfo DocumentNumber="{{ticketNumber}}" DocumentType="E-Ticket"/>
     </air:AirVoidDocumentReq>

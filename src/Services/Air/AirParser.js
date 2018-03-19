@@ -1012,7 +1012,7 @@ function availability(rsp) {
   itinerarySolution['air:AirSegmentRef'].forEach((segmentRef, key) => {
     const segment = rsp['air:AirSegmentList'][segmentRef];
     const isConnected = connectedSegments.find(s => s === key);
-    const availInfo = segment['air:AirAvailInfo'].find(info => info.ProviderCode === '1G');
+    const availInfo = segment['air:AirAvailInfo'].find(info => info.ProviderCode === '1P');
 
     if (!availInfo) {
       return;

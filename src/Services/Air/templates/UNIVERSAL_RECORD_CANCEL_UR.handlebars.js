@@ -9,7 +9,7 @@ module.exports = `
     <univ:UniversalRecordCancelReq TargetBranch="{{TargetBranch}}"  UniversalRecordLocatorCode="{{LocatorCode}}" Version="0">
       <com:BillingPointOfSaleInfo OriginApplication="UAPI"/>
       {{#if emulatePcc}}
-      <com:OverridePCC ProviderCode="1G" PseudoCityCode="{{emulatePcc}}"/>
+      <com:OverridePCC ProviderCode="1P" PseudoCityCode="{{emulatePcc}}"/>
       {{/if}}
     </univ:UniversalRecordCancelReq>
   </soapenv:Body>
