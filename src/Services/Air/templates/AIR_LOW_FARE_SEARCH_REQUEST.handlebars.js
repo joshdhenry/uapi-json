@@ -1,7 +1,7 @@
 module.exports = `
 <!--Release 33-->
 <!--Version Dated as of 14/Aug/2015 18:47:44-->
-<!--Air Low Fare Search For Galileo(1P) Request-->
+<!--Air Low Fare Search For Worldspan(1P) Request-->
 <soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
     <soap:Body>
         <air:LowFareSearchReq
