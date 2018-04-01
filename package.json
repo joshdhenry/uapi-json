@@ -1,6 +1,6 @@
 {
   "name": "uapi-json",
-  "version": "0.18.4",
+  "version": "0.19.1",
   "description": "Travelport Universal API",
   "main": "build/",
   "files": [
@@ -17,10 +17,6 @@
     "lint": "eslint src/",
     "build": "babel --copy-files src/ -d build/",
     "prepublish": "npm run lint && npm run test && npm run build"
-  },
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/Travelport-Ukraine/uapi-json"
   },
   "keywords": [
     "uapi",
